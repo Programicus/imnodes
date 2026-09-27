@@ -2544,7 +2544,24 @@ void EndNodeTitleBar()
     ImNodeData&           node = editor.Nodes.Pool[GImNodes->CurrentNodeIdx];
     node.TitleBarContentRect = GetItemRect();
 
+    // GetNodeTitleRect() intentionally spans the *previous frame's* node
+    // width, so that the titlebar remains a full-width hover/hit target even
+    // though its content might be narrower than the node. That ItemAdd() is
+    // meant to be inert with respect to layout -- historically ImGui's
+    // EndGroup() only looked at CursorMaxPos, which ItemAdd() never
+    // touches. Since Dear ImGui 1.90.6 (issue #7543), EndGroup() also folds
+    // g.LastItemData.Rect.Max into the enclosing group's bounding box, so
+    // this titlebar item's stale, previous-frame-derived width now leaks
+    // into the node's own ImGui::EndGroup() in EndNode(). For a node with no
+    // attributes (no pins registered after the titlebar), there is no later,
+    // narrower item to overwrite LastItemData before EndNode()'s EndGroup()
+    // runs, so node.Rect grows by NodePadding every single frame forever.
+    // Snapshot/restore LastItemData around the ItemAdd() call so the title
+    // bar item still gets registered (hover, nav, id) without becoming the
+    // "last item" that EndGroup() folds into the group bounding box.
+    const ImGuiLastItemData last_item_data_backup = GImGui->LastItemData;
     ImGui::ItemAdd(GetNodeTitleRect(node), ImGui::GetID("title_bar"));
+    GImGui->LastItemData = last_item_data_backup;
 
     ImGui::SetCursorPos(GridSpaceToEditorSpace(editor, GetNodeContentOrigin(node)));
 }
